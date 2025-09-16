@@ -19,12 +19,12 @@
  */
 
 // Import all the modular API services
-import { getDrivers, getDriver, getDriversWithStandings } from './api/drivers'
-import { getMeetings, getMeetingsByYear, getCompletedMeetings } from './api/meetings'
+import { getDrivers, getDriver } from './api/drivers'
+import { getMeetings, getMeetingsByYear } from './api/meetings'
 import { getSessions, getSessionsByMeeting, getLatestAvailableSession, getRaceSessionsByYear } from './api/sessions'
-import { getCircuits, getCircuitsByYear, getCircuit } from './api/circuits'
-import { getPositions, getFinalPositions } from './api/positions'
-import { getLapTimes, getSessionResults, getLapTimeStats } from './api/performance'
+import { getCircuits, getCircuitsByYear } from './api/circuits'
+import { getPositions } from './api/positions'
+import { getLapTimes, getSessionResults } from './api/performance'
 import { calculateStandings, F1_POINTS_SYSTEM } from './standings'
 import { getCachedOrFetch } from './api/cache'
 

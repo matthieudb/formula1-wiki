@@ -1,13 +1,11 @@
 import axios from 'axios'
-import type { 
-  Driver, 
-  Constructor, 
-  Circuit, 
-  Session, 
-  Meeting, 
-  Position, 
-  LapTime, 
-  ApiResponse 
+import type {
+  Driver,
+  Circuit,
+  Session,
+  Meeting,
+  Position,
+  LapTime
 } from '../types'
 
 // OpenF1 API base URL
