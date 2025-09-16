@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, Trophy, Calendar, Clock, TrendingUp } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
-import OpenF1Service from '../services/openf1'
+import OpenF1Service from '../services/openf1-new'
 import type { Driver, LapTime, Session } from '../types'
 
 const DriverDetail = () => {

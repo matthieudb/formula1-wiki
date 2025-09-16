@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { MapPin, Calendar, ArrowRight, Clock } from 'lucide-react'
-import OpenF1Service from '../services/openf1'
+import OpenF1Service from '../services/openf1-new'
 import type { Circuit } from '../types'
 
 const Circuits = () => {

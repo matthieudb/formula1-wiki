@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, MapPin, Calendar, Clock, Flag } from 'lucide-react'
-import OpenF1Service from '../services/openf1'
+import OpenF1Service from '../services/openf1-new'
 import type { Circuit, Meeting, Session } from '../types'
 
 const CircuitDetail = () => {

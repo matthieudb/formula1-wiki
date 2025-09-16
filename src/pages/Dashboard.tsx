@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Users, Trophy, Calendar, MapPin, Clock, TrendingUp } from 'lucide-react'
-import OpenF1Service from '../services/openf1'
+import OpenF1Service from '../services/openf1-new'
 import type { Driver, Circuit, DashboardStats, ConstructorStandingsEntry } from '../types'
 
 const Dashboard = () => {
