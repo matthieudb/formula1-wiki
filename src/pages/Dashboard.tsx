@@ -2,40 +2,100 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Users, Trophy, Calendar, MapPin, Clock, TrendingUp } from 'lucide-react'
 import OpenF1Service from '../services/openf1'
-import type { Driver, Circuit, DashboardStats } from '../types'
+import type { Driver, Circuit, DashboardStats, ConstructorStandingsEntry } from '../types'
 
 const Dashboard = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [drivers, setDrivers] = useState<Driver[]>([])
+  const [constructors, setConstructors] = useState<ConstructorStandingsEntry[]>([])
   const [circuits, setCircuits] = useState<Circuit[]>([])
   const [loading, setLoading] = useState(true)
+  const [standingsLoading, setStandingsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'drivers' | 'constructors'>('drivers')
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
+    const fetchBasicData = async () => {
       try {
         setLoading(true)
-        // Get 2025 season data specifically
-        const seasonData = await OpenF1Service.getSeasonStats(2025)
+        
+        // First, get basic season info (meetings) quickly
+        const meetings = await OpenF1Service.getMeetingsByYear(2025)
+        const basicDrivers = await OpenF1Service.getDrivers(undefined, 2025)
+        
+        // Set basic stats immediately
+        const now = new Date()
+        const completedRaces = meetings.filter(meeting =>
+          new Date(meeting.date_start) < now
+        ).length
         
         setStats({
-          totalRaces: seasonData.totalRaces,
-          completedRaces: seasonData.completedRaces,
-          upcomingRaces: seasonData.upcomingRaces,
-          totalDrivers: seasonData.totalDrivers,
-          totalConstructors: seasonData.totalConstructors
+          totalRaces: meetings.length,
+          completedRaces,
+          upcomingRaces: meetings.length - completedRaces,
+          totalDrivers: basicDrivers.length,
+          totalConstructors: new Set(basicDrivers.map(d => d.team_name)).size,
+          currentYear: 2025
         })
-        setDrivers(seasonData.drivers)
-        setCircuits(seasonData.circuits)
+        
+        // Set basic drivers (without points initially)
+        setDrivers(basicDrivers.map(driver => ({ ...driver, points: 0 })))
+        
+        // Set circuits
+        const circuits = meetings.map(meeting => ({
+          circuit_key: meeting.circuit_key,
+          circuit_short_name: meeting.circuit_short_name,
+          circuit_name: meeting.meeting_official_name,
+          country_code: meeting.country_code,
+          country_name: meeting.country_name,
+          location: meeting.location,
+          date_start: meeting.date_start,
+          gmt_offset: meeting.gmt_offset,
+          meeting_key: meeting.meeting_key,
+        })).filter((circuit, index, self) =>
+          index === self.findIndex(c => c.circuit_key === circuit.circuit_key)
+        )
+        setCircuits(circuits)
+        
+        setLoading(false)
+        
+        // Now calculate standings in the background
+        setStandingsLoading(true)
+        try {
+          const standingsData = await OpenF1Service.calculateStandings(2025)
+          
+          console.log('Standings calculated:', {
+            totalRaces: standingsData.totalRaces,
+            completedRaces: standingsData.completedRaces,
+            upcomingRaces: standingsData.upcomingRaces,
+            driversCount: standingsData.drivers?.length,
+            constructorsCount: standingsData.constructors?.length,
+            lastUpdated: standingsData.lastUpdated
+          })
+          
+          // Update with calculated standings
+          setStats(prev => ({
+            ...prev!,
+            totalRaces: standingsData.totalRaces,
+            completedRaces: standingsData.completedRaces,
+            upcomingRaces: standingsData.upcomingRaces,
+            lastUpdated: standingsData.lastUpdated
+          }))
+          setDrivers(standingsData.drivers)
+          setConstructors(standingsData.constructors || [])
+        } catch (standingsError) {
+          console.error('Error calculating standings:', standingsError)
+          // Keep the basic data, just show error for standings
+        } finally {
+          setStandingsLoading(false)
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load dashboard data')
-      } finally {
         setLoading(false)
       }
     }
 
-    fetchDashboardData()
+    fetchBasicData()
   }, [])
 
   if (loading) {
@@ -88,19 +148,8 @@ const Dashboard = () => {
     }
   ]
 
-  // Group drivers by team for constructor standings
-  const constructorStandings = drivers.reduce((acc, driver) => {
-    if (!acc[driver.team_name]) {
-      acc[driver.team_name] = {
-        name: driver.team_name,
-        colour: driver.team_colour,
-        drivers: [],
-        points: 0 // This would come from actual standings data
-      }
-    }
-    acc[driver.team_name].drivers.push(driver)
-    return acc
-  }, {} as Record<string, any>)
+  // Use the properly calculated constructor standings from the API
+  const constructorStandings = constructors
 
   return (
     <div className="space-y-8">
@@ -138,7 +187,27 @@ const Dashboard = () => {
       {/* Standings Section */}
       <div className="card">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-white">Championship Standings</h2>
+          <div>
+            <h2 className="text-2xl font-bold text-white flex items-center">
+              Championship Standings
+              {standingsLoading && (
+                <div className="ml-3 animate-spin rounded-full h-4 w-4 border-b-2 border-f1-red"></div>
+              )}
+            </h2>
+            {standingsLoading ? (
+              <p className="text-xs text-yellow-400 mt-1">
+                Calculating current standings...
+              </p>
+            ) : stats?.lastUpdated ? (
+              <p className="text-xs text-f1-gray-400 mt-1">
+                Last updated: {new Date(stats.lastUpdated).toLocaleString()}
+              </p>
+            ) : (
+              <p className="text-xs text-f1-gray-400 mt-1">
+                Showing basic driver list (points calculating...)
+              </p>
+            )}
+          </div>
           <div className="flex bg-f1-gray-800 rounded-lg p-1">
             <button
               onClick={() => setActiveTab('drivers')}
@@ -173,7 +242,7 @@ const Dashboard = () => {
                   <th className="table-header">Driver</th>
                   <th className="table-header">Team</th>
                   <th className="table-header">Number</th>
-                  <th className="table-header">Country</th>
+                  <th className="table-header">Points</th>
                   <th className="table-header">Actions</th>
                 </tr>
               </thead>
@@ -204,7 +273,7 @@ const Dashboard = () => {
                     </td>
                     <td className="table-cell">
                       <div className="flex items-center">
-                        <div 
+                        <div
                           className="h-3 w-3 rounded-full mr-2"
                           style={{ backgroundColor: `#${driver.team_colour}` }}
                         ></div>
@@ -215,7 +284,14 @@ const Dashboard = () => {
                       #{driver.driver_number}
                     </td>
                     <td className="table-cell text-f1-gray-300">
-                      {driver.country_code}
+                      <div className="flex items-center space-x-2">
+                        <span>{driver.points || 0} pts</span>
+                        {(driver as any).wins > 0 && (
+                          <span className="text-xs bg-yellow-600 text-yellow-100 px-2 py-1 rounded">
+                            {(driver as any).wins} wins
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="table-cell">
                       <Link
@@ -245,14 +321,14 @@ const Dashboard = () => {
                 </tr>
               </thead>
               <tbody className="bg-f1-gray-900 divide-y divide-f1-gray-700">
-                {Object.values(constructorStandings).map((constructor: any, index) => (
+                {constructorStandings.map((constructor, index) => (
                   <tr key={constructor.name} className="hover:bg-f1-gray-800">
                     <td className="table-cell text-f1-gray-300 font-bold">
                       #{index + 1}
                     </td>
                     <td className="table-cell">
                       <div className="flex items-center">
-                        <div 
+                        <div
                           className="h-4 w-4 rounded-full mr-3"
                           style={{ backgroundColor: `#${constructor.colour}` }}
                         ></div>
@@ -271,7 +347,14 @@ const Dashboard = () => {
                       </div>
                     </td>
                     <td className="table-cell text-f1-gray-300">
-                      {constructor.points} pts
+                      <div className="flex items-center space-x-2">
+                        <span>{constructor.points || 0} pts</span>
+                        {constructor.wins > 0 && (
+                          <span className="text-xs bg-yellow-600 text-yellow-100 px-2 py-1 rounded">
+                            {constructor.wins} wins
+                          </span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

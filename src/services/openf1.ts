@@ -253,6 +253,184 @@ export class OpenF1Service {
     })
   }
 
+  // Get session results for points calculation
+  static async getSessionResults(sessionKey: number): Promise<any[]> {
+    return getCachedOrFetch(`session-results-${sessionKey}`, async () => {
+      try {
+        const response = await rateLimitedApiCall(() =>
+          api.get(`/session_result?session_key=${sessionKey}`)
+        )
+        return response.data
+      } catch (error) {
+        console.error('Error fetching session results:', error)
+        return []
+      }
+    })
+  }
+
+  // Get race sessions for a specific year (only actual Grand Prix races, not sprint races)
+  static async getRaceSessionsByYear(year: number): Promise<Session[]> {
+    return getCachedOrFetch(`race-sessions-${year}`, async () => {
+      try {
+        const response = await rateLimitedApiCall(() =>
+          api.get(`/sessions?year=${year}`)
+        )
+        // Filter to only include main race sessions (not Sprint races)
+        const raceSessions = response.data.filter((session: Session) =>
+          session.session_name === 'Race' && session.session_type === 'Race'
+        )
+        console.log(`Filtered ${raceSessions.length} Grand Prix races from ${response.data.length} total sessions`)
+        return raceSessions
+      } catch (error) {
+        console.error(`Error fetching race sessions for year ${year}:`, error)
+        return []
+      }
+    })
+  }
+
+  // F1 Points system: 1st=25, 2nd=18, 3rd=15, 4th=12, 5th=10, 6th=8, 7th=6, 8th=4, 9th=2, 10th=1
+  static readonly F1_POINTS_SYSTEM = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
+
+  // Calculate championship standings for a specific year
+  static async calculateStandings(year: number = 2025) {
+    const cacheKey = `calculated-standings-${year}`
+    
+    return getCachedOrFetch(cacheKey, async () => {
+      try {
+        console.log(`Calculating standings for ${year} season...`)
+        
+        // Step 1: Get all race sessions for the year
+        const raceSessions = await this.getRaceSessionsByYear(year)
+        console.log(`Found ${raceSessions.length} race sessions for ${year}`)
+        
+        if (raceSessions.length === 0) {
+          throw new Error(`No race sessions found for year ${year}`)
+        }
+
+        // Step 2: Determine completed races (date_end < now)
+        const now = new Date()
+        const completedRaces = raceSessions.filter(session =>
+          session.date_end && new Date(session.date_end) < now
+        )
+        console.log(`Found ${completedRaces.length} completed races out of ${raceSessions.length} total`)
+
+        // Step 3: Get drivers list from latest meeting
+        const allDrivers = await this.getDrivers(undefined, year)
+        console.log(`Found ${allDrivers.length} drivers for ${year} season`)
+
+        // Step 4: Initialize points tables
+        const driverPoints = new Map<number, number>()
+        const constructorPoints = new Map<string, number>()
+        const driverWins = new Map<number, number>()
+        const constructorWins = new Map<string, number>()
+
+        // Initialize all drivers with 0 points
+        allDrivers.forEach(driver => {
+          driverPoints.set(driver.driver_number, 0)
+          constructorPoints.set(driver.team_name, constructorPoints.get(driver.team_name) || 0)
+          driverWins.set(driver.driver_number, 0)
+          constructorWins.set(driver.team_name, constructorWins.get(driver.team_name) || 0)
+        })
+
+        // Step 5: Process each completed race
+        for (const raceSession of completedRaces) {
+          console.log(`Processing race: ${raceSession.session_name} at ${raceSession.location}`)
+          
+          try {
+            // Add delay between API calls to respect rate limits
+            await new Promise(resolve => setTimeout(resolve, 400))
+            
+            // Get positions for this race
+            const positions = await this.getPositions(raceSession.session_key)
+            
+            if (positions.length === 0) {
+              console.warn(`No positions found for race session ${raceSession.session_key}`)
+              continue
+            }
+
+            // Sort positions by position number and assign points
+            const sortedPositions = positions
+              .filter(pos => pos.position > 0) // Only valid positions
+              .sort((a, b) => a.position - b.position)
+
+            sortedPositions.forEach((pos, index) => {
+              const driver = allDrivers.find(d => d.driver_number === pos.driver_number)
+              if (!driver) return
+
+              // Award points according to F1 system
+              const points = this.F1_POINTS_SYSTEM[index] || 0
+              if (points > 0) {
+                driverPoints.set(pos.driver_number,
+                  (driverPoints.get(pos.driver_number) || 0) + points)
+                constructorPoints.set(driver.team_name,
+                  (constructorPoints.get(driver.team_name) || 0) + points)
+              }
+
+              // Track wins (1st place)
+              if (pos.position === 1) {
+                driverWins.set(pos.driver_number,
+                  (driverWins.get(pos.driver_number) || 0) + 1)
+                constructorWins.set(driver.team_name,
+                  (constructorWins.get(driver.team_name) || 0) + 1)
+              }
+            })
+
+            console.log(`Processed ${sortedPositions.length} positions for ${raceSession.location}`)
+          } catch (error) {
+            console.error(`Error processing race session ${raceSession.session_key}:`, error)
+            continue
+          }
+        }
+
+        // Step 6: Create driver standings
+        const driverStandings = allDrivers.map(driver => ({
+          ...driver,
+          points: driverPoints.get(driver.driver_number) || 0,
+          wins: driverWins.get(driver.driver_number) || 0,
+        })).sort((a, b) => {
+          // Sort by points descending, then by wins as tiebreaker
+          if (b.points !== a.points) return b.points - a.points
+          return b.wins - a.wins
+        })
+
+        // Step 7: Create constructor standings
+        const constructorStandings = Array.from(
+          new Set(allDrivers.map(d => d.team_name))
+        ).map(teamName => {
+          const teamDrivers = allDrivers.filter(d => d.team_name === teamName)
+          return {
+            name: teamName,
+            colour: teamDrivers[0]?.team_colour || '000000',
+            drivers: teamDrivers,
+            points: constructorPoints.get(teamName) || 0,
+            wins: constructorWins.get(teamName) || 0,
+          }
+        }).sort((a, b) => {
+          // Sort by points descending, then by wins as tiebreaker
+          if (b.points !== a.points) return b.points - a.points
+          return b.wins - a.wins
+        })
+
+        console.log(`Standings calculation complete:`)
+        console.log(`- Driver leader: ${driverStandings[0]?.full_name} (${driverStandings[0]?.points} pts)`)
+        console.log(`- Constructor leader: ${constructorStandings[0]?.name} (${constructorStandings[0]?.points} pts)`)
+
+        return {
+          drivers: driverStandings,
+          constructors: constructorStandings,
+          totalRaces: raceSessions.length,
+          completedRaces: completedRaces.length,
+          upcomingRaces: raceSessions.length - completedRaces.length,
+          lastUpdated: new Date().toISOString()
+        }
+
+      } catch (error) {
+        console.error(`Error calculating standings for year ${year}:`, error)
+        throw error
+      }
+    })
+  }
+
   // Get latest session
   static async getLatestSession(): Promise<Session | null> {
     return this.getLatestAvailableSession()
@@ -265,17 +443,17 @@ export class OpenF1Service {
     
     return getCachedOrFetch(cacheKey, async () => {
       try {
-        // Get data for specific year
+        // Use the new standings calculation method
+        const standingsData = await this.calculateStandings(targetYear)
+        
+        // Get meetings for circuits data
         const meetings = await this.getMeetingsByYear(targetYear)
         
         if (meetings.length === 0) {
           throw new Error(`No meetings found for year ${targetYear}`)
         }
 
-        // Get drivers from the specific year
-        const drivers = await this.getDrivers(undefined, targetYear)
-        
-        // OPTIMIZATION: Create circuits from meetings data instead of separate API call
+        // Create circuits from meetings data
         const circuits = meetings.map(meeting => ({
           circuit_key: meeting.circuit_key,
           circuit_short_name: meeting.circuit_short_name,
@@ -290,39 +468,19 @@ export class OpenF1Service {
           index === self.findIndex(c => c.circuit_key === circuit.circuit_key)
         )
 
-        const now = new Date()
-        const completedRaces = meetings.filter(meeting =>
-          new Date(meeting.date_start) < now
-        ).length
-
-        // OPTIMIZATION: Skip session fetching to avoid rate limiting
-        // Most dashboard functionality doesn't need detailed session data
-        const sessions: any[] = []
-        
-        // If sessions are absolutely needed, fetch them sequentially to avoid rate limits
-        // Commented out to prevent 429 errors - uncomment if sessions are truly needed
-        // for (const meeting of meetings.slice(0, 3)) { // Limit to first 3 meetings
-        //   try {
-        //     const meetingSessions = await this.getSessionsByMeeting(meeting.meeting_key)
-        //     sessions.push(...meetingSessions)
-        //     // Add delay between requests to respect rate limits
-        //     await new Promise(resolve => setTimeout(resolve, 400))
-        //   } catch (error) {
-        //     console.warn(`Failed to fetch sessions for meeting ${meeting.meeting_key}:`, error)
-        //   }
-        // }
-
         return {
-          totalRaces: meetings.length,
-          completedRaces,
-          upcomingRaces: meetings.length - completedRaces,
-          totalDrivers: drivers.length,
-          totalConstructors: new Set(drivers.map(d => d.team_name)).size,
+          totalRaces: standingsData.totalRaces,
+          completedRaces: standingsData.completedRaces,
+          upcomingRaces: standingsData.upcomingRaces,
+          totalDrivers: standingsData.drivers.length,
+          totalConstructors: standingsData.constructors.length,
           currentYear: targetYear,
           meetings,
-          drivers,
+          drivers: standingsData.drivers,
+          constructors: standingsData.constructors,
           circuits,
-          sessions
+          sessions: [],
+          lastUpdated: standingsData.lastUpdated
         }
       } catch (error) {
         console.error(`Error fetching season stats for year ${targetYear}:`, error)

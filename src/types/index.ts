@@ -12,6 +12,7 @@ export interface Driver {
   country_code: string
   session_key?: number
   meeting_key?: number
+  points?: number // Add points for standings
 }
 
 // Constructor/Team types
@@ -111,6 +112,16 @@ export interface DashboardStats {
   totalDrivers: number
   totalConstructors: number
   currentYear?: number
+  lastUpdated?: string
+}
+
+// Constructor standings for dashboard
+export interface ConstructorStandingsEntry {
+  name: string
+  colour: string
+  drivers: Driver[]
+  points: number
+  wins: number
 }
 
 // Standings data
