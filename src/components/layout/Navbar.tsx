@@ -4,15 +4,33 @@ import { Trophy, Home, Users, MapPin } from 'lucide-react'
 const Navbar = () => {
   const location = useLocation()
 
-  const navigation = [
+  // Get all available navigation items
+  const allNavigation = [
     { name: 'Dashboard', href: '/', icon: Home },
-    { name: 'Drivers', href: '#drivers', icon: Users },
-    { name: 'Circuits', href: '#circuits', icon: MapPin },
+    { name: 'Drivers', href: '/drivers', icon: Users },
+    { name: 'Circuits', href: '/circuits', icon: MapPin },
   ]
+
+  // Filter navigation based on current page
+  const navigation = allNavigation.filter(item => {
+    // Always show Dashboard
+    if (item.href === '/') return true
+    
+    // Don't show Drivers link if we're on a driver page
+    if (item.href === '/drivers' && location.pathname.startsWith('/driver')) return false
+    
+    // Don't show Circuits link if we're on a circuit page
+    if (item.href === '/circuits' && location.pathname.startsWith('/circuit')) return false
+    
+    // Show all other links
+    return true
+  })
 
   const isActive = (href: string) => {
     if (href === '/') return location.pathname === '/'
-    return location.pathname.includes(href.replace('#', ''))
+    if (href === '/drivers') return location.pathname === '/drivers'
+    if (href === '/circuits') return location.pathname === '/circuits'
+    return false
   }
 
   return (
@@ -37,9 +55,9 @@ const Navbar = () => {
             {navigation.map((item) => {
               const Icon = item.icon
               return (
-                <a
+                <Link
                   key={item.name}
-                  href={item.href}
+                  to={item.href}
                   className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${
                     isActive(item.href)
                       ? 'bg-f1-red text-white'
@@ -48,7 +66,7 @@ const Navbar = () => {
                 >
                   <Icon className="h-4 w-4" />
                   <span>{item.name}</span>
-                </a>
+                </Link>
               )
             })}
           </div>
@@ -76,9 +94,9 @@ const Navbar = () => {
           {navigation.map((item) => {
             const Icon = item.icon
             return (
-              <a
+              <Link
                 key={item.name}
-                href={item.href}
+                to={item.href}
                 className={`flex items-center space-x-2 px-3 py-2 rounded-md text-base font-medium ${
                   isActive(item.href)
                     ? 'bg-f1-red text-white'
@@ -87,7 +105,7 @@ const Navbar = () => {
               >
                 <Icon className="h-4 w-4" />
                 <span>{item.name}</span>
-              </a>
+              </Link>
             )
           })}
         </div>
