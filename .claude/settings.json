@@ -1,0 +1,12 @@
+{
+    "permissions": {
+        "allow": [],
+        "deny": []
+    },
+    "env": {
+        "ANTHROPIC_BASE_URL": "https://bridge.intellua.com",
+        "ANTHROPIC_AUTH_TOKEN": "int-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJNYXR0aGlldS5EZUJyZXVja0BheHhlcy5jb20iLCJqdGkiOiI1NmEzNjllZC05YTQ2LTRjMDQtOTZlMS1hM2I5NjcwN2I0NDQiLCJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1laWRlbnRpZmllciI6Ik1hdHRoaWV1LkRlQnJldWNrQGF4eGVzLmNvbSIsIndvcmtzcGFjZUlkIjoiMDY2NjYxNTQtZWNlZC03YzdlLTgwMDAtNzA3OTM4NzhkYTIzIiwibW9kZWxJZCI6IjA2NmQ1YTk3LTNiMDMtNzU2Ny04MDAwLTEwYTVlM2RhODcxMiIsImV4cCI6MTc2MDcwODY2NiwiaXNzIjoiaW50ZWxsdWEtcGxhdGZvcm0iLCJhdWQiOiJtb2RlbC11c2VycyJ9.De8Zo5EnFFpehHjf5yVay_djIekkQe2_aMdK2pTts0c",
+        "ANTHROPIC_SMALL_FAST_MODEL": "gemini/gemini-2.5-flash",
+        "ANTHROPIC_MODEL": "anthropic/claude-sonnet-4"
+    }
+}
